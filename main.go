@@ -141,7 +141,7 @@ func configureHCA(hca string, numVFs int, machinePrefix string, vfCounter *uint6
 
 	// If numVFs==0, we are disabling VFs—nothing more to do.
 	if numVFs == 0 {
-		fmt.Printf("Disabling VFs for HCA %s (NUM_VFS=0)\n", hca)
+		fmt.Printf("Disabling VFs for HCA %s\n", hca)
 		return nil
 	}
 

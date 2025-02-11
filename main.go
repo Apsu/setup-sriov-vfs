@@ -18,8 +18,8 @@ func main() {
 		os.Exit(1)
 	}
 	numVFs, err := strconv.Atoi(numVFsStr)
-	if err != nil || numVFs <= 0 {
-		fmt.Fprintf(os.Stderr, "Invalid NUM_VFS value: %s\n", numVFsStr)
+	if err != nil || numVFs < 0 {
+		fmt.Fprintf(os.Stderr, "Invalid NUM_VFS value (must be >= 0): %s\n", numVFsStr)
 		os.Exit(1)
 	}
 
@@ -110,10 +110,9 @@ func getHCAs(basePath string) ([]string, error) {
 			continue
 		}
 
-		// Check if this entry is itself a VF by looking for a "physfn" entry in its device directory.
+		// Check if this entry is a VF by looking for a "physfn" entry.
 		physfnPath := filepath.Join(fullPath, "device", "physfn")
 		if _, err := os.Stat(physfnPath); err == nil {
-			// The "physfn" exists, so this HCA is actually a VF. Skip it.
 			fmt.Printf("Skipping VF %s (has physfn)\n", entry.Name())
 			continue
 		}
@@ -133,12 +132,20 @@ func checkDeviceId(hca, expectedDeviceID string) (bool, error) {
 	return id == expectedDeviceID, nil
 }
 
-// configureHCA resets the VF count, assigns new VF MACs, and then unbinds/rebinds VF devices.
+// configureHCA resets the VF count, assigns new VF MACs (if numVFs > 0), and then unbinds/rebinds VF devices.
 func configureHCA(hca string, numVFs int, machinePrefix string, vfCounter *uint64) error {
 	// Reset the VF count.
 	if err := setSriovNumVFs(hca, 0); err != nil {
 		return fmt.Errorf("failed to reset sriov_numvfs: %v", err)
 	}
+
+	// If numVFs==0, we are disabling VFs—nothing more to do.
+	if numVFs == 0 {
+		fmt.Printf("Disabling VFs for HCA %s (NUM_VFS=0)\n", hca)
+		return nil
+	}
+
+	// Set the desired number of VFs.
 	if err := setSriovNumVFs(hca, numVFs); err != nil {
 		return fmt.Errorf("failed to set sriov_numvfs to %d: %v", numVFs, err)
 	}
@@ -182,7 +189,7 @@ func assignVFMacs(hca string, numVFs int, machinePrefix string, vfCounter *uint6
 }
 
 // rebindVFDevices unbinds and rebinds each VF (found as "virtfn*" entries under /sys/class/infiniband/<hca>/device)
-// so that the driver reinitializes the VF (and thus recalculates the node_guid based on the new MAC).
+// so that the driver reinitializes the VF (and recalculates the node_guid based on the new MAC).
 func rebindVFDevices(hca string) error {
 	pfDeviceDir := filepath.Join(infinibandBasePath, hca, "device")
 	entries, err := os.ReadDir(pfDeviceDir)

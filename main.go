@@ -44,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 	if len(hcas) == 0 {
-		fmt.Fprintf(os.Stderr, "No HCAs found in %s\n", infinibandBasePath)
+		fmt.Fprintf(os.Stderr, "No PF HCAs found in %s\n", infinibandBasePath)
 		os.Exit(1)
 	}
 
@@ -91,7 +91,8 @@ func getMachinePrefix() (string, error) {
 	return strings.Join(parts, ":"), nil
 }
 
-// getHCAs returns the names of all entries in infinibandBasePath whose symlink targets are directories.
+// getHCAs returns the names of all entries in infinibandBasePath whose symlink targets are directories
+// and that are *not* VFs (i.e. they do not have a "physfn" entry under <hca>/device).
 func getHCAs(basePath string) ([]string, error) {
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
@@ -105,9 +106,18 @@ func getHCAs(basePath string) ([]string, error) {
 			fmt.Fprintf(os.Stderr, "Warning: could not stat %s: %v\n", fullPath, err)
 			continue
 		}
-		if info.IsDir() {
-			hcas = append(hcas, entry.Name())
+		if !info.IsDir() {
+			continue
 		}
+
+		// Check if this entry is itself a VF by looking for a "physfn" entry in its device directory.
+		physfnPath := filepath.Join(fullPath, "device", "physfn")
+		if _, err := os.Stat(physfnPath); err == nil {
+			// The "physfn" exists, so this HCA is actually a VF. Skip it.
+			fmt.Printf("Skipping VF %s (has physfn)\n", entry.Name())
+			continue
+		}
+		hcas = append(hcas, entry.Name())
 	}
 	return hcas, nil
 }
